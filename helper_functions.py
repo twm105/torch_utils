@@ -137,18 +137,48 @@ def plot_loss_curves(results):
              "test_loss": [...],
              "test_acc": [...]}
     """
+    
+    # extract values to plot
     loss = results["train_loss"]
     test_loss = results["test_loss"]
 
     accuracy = results["train_acc"]
     test_accuracy = results["test_acc"]
 
-    epochs = range(len(results["train_loss"]))
+    plot_count = 2
+
+    lr_plot = "lr" in results.keys()
+    weight_decay_plot = "weight_decay" in results.keys()
+    if lr_plot:
+        lr = results["lr"]
+        if weight_decay_plot:
+            weight_decay = results["weight_decay"]
+        plot_count += 1
+    
+    task_plot = "task" in results.keys()
+    if task_plot:
+        tasks = results["task"]
+        task_map = {task: i for i, task in enumerate(list(set(tasks)))} # generate indices for each unique task in results
+        task_indices = [task_map[task] for task in tasks] # map indices to task-strings in new list
+        plot_count += 1
+
+    if "epochs" in results.keys():
+        epochs = results["epochs"]
+    else:
+        epochs = range(len(results["train_loss"]))
+
+    # setup subplots layout
+    n_rows = 1
+    n_cols = 2
+    if plot_count == 3:
+        n_cols = 3
+    elif plot_count == 4:
+        n_rows = 2
 
     plt.figure(figsize=(15, 7))
 
     # Plot loss
-    plt.subplot(1, 2, 1)
+    plt.subplot(n_rows, n_cols, 1)
     plt.plot(epochs, loss, label="train_loss")
     plt.plot(epochs, test_loss, label="test_loss")
     plt.title("Loss")
@@ -156,13 +186,33 @@ def plot_loss_curves(results):
     plt.legend()
 
     # Plot accuracy
-    plt.subplot(1, 2, 2)
+    plt.subplot(n_rows, n_cols, 2)
     plt.plot(epochs, accuracy, label="train_accuracy")
     plt.plot(epochs, test_accuracy, label="test_accuracy")
     plt.title("Accuracy")
     plt.xlabel("Epochs")
     plt.legend()
 
+    # Plot training config if required
+    if lr_plot:
+        plt.subplot(n_rows, n_cols, 3) # always the 3rd plot if present
+        plt.plot(epochs, lr, label="lr")
+        if weight_decay_plot:
+            plt.plot(epochs, weight_decay, label="weight_decay")
+        plt.yscale("log")
+        plt.title("Learning Schedule")
+        plt.xlabel("Epochs")
+        plt.legend()
+    
+    # Plot training tasks if required
+    if task_plot:
+        plt.subplot(n_rows, n_cols, plot_count) # always the final plot if present
+        for task in task_map.keys():
+            task_indices_i = [i  if i == task_map[task] else None for i in task_indices]
+            plt.scatter(epochs, task_indices_i, label=task)
+        plt.title("Learning Schedule")
+        plt.xlabel("Epochs")
+        plt.legend()
 
 # Pred and plot image function from notebook 04
 # See creation: https://www.learnpytorch.io/04_pytorch_custom_datasets/#113-putting-custom-image-prediction-together-building-a-function

@@ -10,7 +10,8 @@ def train_step(model: torch.nn.Module,
                dataloader: torch.utils.data.DataLoader, 
                loss_fn: torch.nn.Module, 
                optimizer: torch.optim.Optimizer,
-               device: torch.device) -> Tuple[float, float]:
+               device: torch.device,
+               scheduler: torch.optim.lr_scheduler=None,) -> Tuple[float, float]:
     """Trains a PyTorch model for a single epoch.
 
     Turns a target PyTorch model to training mode and then
@@ -23,6 +24,7 @@ def train_step(model: torch.nn.Module,
     loss_fn: A PyTorch loss function to minimize.
     optimizer: A PyTorch optimizer to help minimize the loss function.
     device: A target device to compute on (e.g. "cuda" or "cpu").
+    scheduler: An optional PyTorch lr_scheduler.
 
     Returns:
     A tuple of training loss and training accuracy metrics.
@@ -61,6 +63,9 @@ def train_step(model: torch.nn.Module,
         y_pred_class = torch.argmax(torch.softmax(y_pred, dim=1), dim=1)
         train_acc += (y_pred_class == y).sum().item()/len(y_pred)
 
+    # LR scheduler step
+    scheduler.step()
+    
     # Adjust metrics to get average loss and accuracy per batch 
     train_loss = train_loss / len(dataloader)
     train_acc = train_acc / len(dataloader)
@@ -122,7 +127,10 @@ def train(model: torch.nn.Module,
           optimizer: torch.optim.Optimizer,
           loss_fn: torch.nn.Module,
           epochs: int,
-          device: torch.device) -> Dict[str, List]:
+          device: torch.device,
+          scheduler: torch.optim.lr_scheduler=None,
+          results: Dict=None,
+          task: str=None,) -> Dict[str, List]:
     """Trains and tests a PyTorch model.
 
     Passes a target PyTorch models through train_step() and test_step()
@@ -139,6 +147,9 @@ def train(model: torch.nn.Module,
     loss_fn: A PyTorch loss function to calculate loss on both datasets.
     epochs: An integer indicating how many epochs to train for.
     device: A target device to compute on (e.g. "cuda" or "cpu").
+    scheduler: An optional LR scheduler.
+    results: An optional results dictionary to extend training results.
+    task: The training objective or dataset (e.g. "CIFAR10")
 
     Returns:
     A dictionary of training and testing loss as well as training and
@@ -154,27 +165,50 @@ def train(model: torch.nn.Module,
               test_loss: [1.2641, 1.5706],
               test_acc: [0.3400, 0.2973]} 
     """
-    # Create empty results dictionary
-    results = {"train_loss": [],
-               "train_acc": [],
-               "test_loss": [],
-               "test_acc": []
-    }
+    # Create empty results dictionary if required
+    result_fields = ['epoch', 'train_loss', 'train_acc', 'test_loss', 'test_acc', 'lr', 'weight_decay', 'task', ]
+    if results is not None:
+        results = {k: [] for k in result_fields}
+    else:
+        # check all results lists are the same length
+        results_values_lengths = [len(v) for v in results.values()]
+        min_results_length = min(results_values_lengths)
+        max_results_length = max(results_values_lengths)
+        assert_msg = f"[ERROR]: results input contains lists of varying lengths (min: {min_results_length}, max: {max_results_length})."
+        assert max_results_length == min_results_length, assert_msg
+
+        # fill any missing fields with None and warn user. Assume epoch started at 1 and fill with 1:max as special case.
+        for field in result_fields:
+            if field not in results.keys():
+                if field == 'epoch':
+                    results_fill = list(range(1, max_results_length+1))
+                    fill_msg = f"range(1, {max_results_length+1})"
+                else:
+                    results_fill = [None] * max_results_length
+                    fill_msg = 'None'
+                results[field] = results_fill
+                print(f"[WARNING] Results field '{field}' not in inputted results. Adding to results and padding with {fill_msg}.")
     
     # Make sure model on target device
     model.to(device)
 
     # Loop through training and testing steps for a number of epochs
     for epoch in tqdm(range(epochs)):
+        # extract current training config parameters
+        epoch_lr = optimizer.param_groups[0]["lr"]
+        epoch_weight_decay = optimizer.param_groups[0]["weight_decay"]
+
+        # run training and test steps
         train_loss, train_acc = train_step(model=model,
                                           dataloader=train_dataloader,
                                           loss_fn=loss_fn,
                                           optimizer=optimizer,
-                                          device=device)
+                                          device=device,
+                                          scheduler=scheduler,)
         test_loss, test_acc = test_step(model=model,
-          dataloader=test_dataloader,
-          loss_fn=loss_fn,
-          device=device)
+                                        dataloader=test_dataloader,
+                                        loss_fn=loss_fn,
+                                        device=device)
 
         # Print out what's happening
         print(
@@ -190,6 +224,10 @@ def train(model: torch.nn.Module,
         results["train_acc"].append(train_acc)
         results["test_loss"].append(test_loss)
         results["test_acc"].append(test_acc)
+        results["epoch"].append(max(results["epoch"]) + 1)
+        results["lr"].append(epoch_lr)
+        results["weight_decay"].append(epoch_weight_decay)
+        results["task"].append(task)
 
     # Return the filled results at the end of the epochs
     return results
