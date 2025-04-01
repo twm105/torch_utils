@@ -224,10 +224,14 @@ def train(model: torch.nn.Module,
         results["train_acc"].append(train_acc)
         results["test_loss"].append(test_loss)
         results["test_acc"].append(test_acc)
-        results["epoch"].append(max(results["epoch"]) + 1)
         results["lr"].append(epoch_lr)
         results["weight_decay"].append(epoch_weight_decay)
         results["task"].append(task)
+        if len(results["epoch"]) == 0:
+            true_epoch = 1
+        else:
+            true_epoch = max(results["epoch"]) + 1
+        results["epoch"].append(true_epoch)
 
     # Return the filled results at the end of the epochs
     return results
