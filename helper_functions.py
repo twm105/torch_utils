@@ -175,44 +175,47 @@ def plot_loss_curves(results):
     elif plot_count == 4:
         n_rows = 2
 
-    plt.figure(figsize=(15, 7))
+    fig, axs = plt.subplots(n_rows, n_cols, figsize=(15, 7), sharex=True)
+    axs = axs.flatten()
 
     # Plot loss
-    plt.subplot(n_rows, n_cols, 1)
-    plt.plot(epochs, loss, label="train_loss")
-    plt.plot(epochs, test_loss, label="test_loss")
-    plt.title("Loss")
-    plt.xlabel("Epochs")
-    plt.legend()
+    axs[0].plot(epochs, loss, label="train_loss")
+    axs[0].plot(epochs, test_loss, label="test_loss")
+    axs[0].set_title("Loss")
+    axs[0].set_xlabel("Epochs")
+    axs[0].legend()
 
     # Plot accuracy
-    plt.subplot(n_rows, n_cols, 2)
-    plt.plot(epochs, accuracy, label="train_accuracy")
-    plt.plot(epochs, test_accuracy, label="test_accuracy")
-    plt.title("Accuracy")
-    plt.xlabel("Epochs")
-    plt.legend()
+    axs[1].plot(epochs, accuracy, label="train_accuracy")
+    axs[1].plot(epochs, test_accuracy, label="test_accuracy")
+    axs[1].set_title("Accuracy")
+    axs[1].set_xlabel("Epochs")
+    axs[1].legend()
 
     # Plot training config if required
     if lr_plot:
-        plt.subplot(n_rows, n_cols, 3) # always the 3rd plot if present
-        plt.plot(epochs, lr, label="lr")
+        axs[2].plot(epochs, lr, label="lr")  # always the 3rd plot if present
         if weight_decay_plot:
-            plt.plot(epochs, weight_decay, label="weight_decay")
-        plt.yscale("log")
-        plt.title("Learning Schedule")
-        plt.xlabel("Epochs")
-        plt.legend()
+            axs[2].plot(epochs, weight_decay, label="weight_decay")
+        axs[2].set_yscale("log")
+        axs[2].set_title("Learning Schedule")
+        axs[2].set_xlabel("Epochs")
+        axs[2].legend()
     
     # Plot training tasks if required
     if task_plot:
-        plt.subplot(n_rows, n_cols, plot_count) # always the final plot if present
+        i = plot_count - 1 # always the final plot if present
         for task in task_map.keys():
             task_indices_i = [i  if i == task_map[task] else None for i in task_indices]
-            plt.scatter(epochs, task_indices_i, label=task)
-        plt.title("Learning Schedule")
-        plt.xlabel("Epochs")
-        plt.legend()
+            axs[i].scatter(epochs, task_indices_i, label=task)
+        axs[i].set_yticks(ticks=list(task_map.values()), labels=list(task_map.keys()))
+        axs[i].set_title("Learning Schedule")
+        axs[i].set_xlabel("Epochs")
+        axs[i].legend()
+    
+    # Finalise plot and show
+    plt.tight_layout()
+    plt.show()
 
 # Pred and plot image function from notebook 04
 # See creation: https://www.learnpytorch.io/04_pytorch_custom_datasets/#113-putting-custom-image-prediction-together-building-a-function
