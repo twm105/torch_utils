@@ -223,8 +223,8 @@ def train(model: torch.nn.Module,
           f"train_acc: {train_acc:.4f} | "
           f"test_loss: {test_loss:.4f} | "
           f"test_acc: {test_acc:.4f} | "
-          f"lr: {epoch_lr:.4f} | "
-          f"weight_decay: {epoch_weight_decay:.4f}"
+          f"lr: {epoch_lr:.1e} | "
+          f"weight_decay: {epoch_weight_decay:.1e}"
           f"{task_str}"
         )
 
