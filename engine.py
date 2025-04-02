@@ -167,7 +167,7 @@ def train(model: torch.nn.Module,
     """
     # Create empty results dictionary if required
     result_fields = ['epoch', 'train_loss', 'train_acc', 'test_loss', 'test_acc', 'lr', 'weight_decay', 'task', ]
-    if results is not None:
+    if results is None:
         results = {k: [] for k in result_fields}
     else:
         # check all results lists are the same length
@@ -211,12 +211,21 @@ def train(model: torch.nn.Module,
                                         device=device)
 
         # Print out what's happening
+        if len(results["epoch"]) == 0:
+            true_epoch = 1
+        else:
+            true_epoch = max(results["epoch"]) + 1
+        if task is not None:
+            task_str = f" | task: {task}"
         print(
-          f"Epoch: {epoch+1} | "
+          f"Epoch: {true_epoch} | "
           f"train_loss: {train_loss:.4f} | "
           f"train_acc: {train_acc:.4f} | "
           f"test_loss: {test_loss:.4f} | "
-          f"test_acc: {test_acc:.4f}"
+          f"test_acc: {test_acc:.4f} | "
+          f"lr: {epoch_lr:.4f} | "
+          f"weight_decay: {epoch_weight_decay:.4f}"
+          f"{task_str}"
         )
 
         # Update results dictionary
@@ -227,10 +236,6 @@ def train(model: torch.nn.Module,
         results["lr"].append(epoch_lr)
         results["weight_decay"].append(epoch_weight_decay)
         results["task"].append(task)
-        if len(results["epoch"]) == 0:
-            true_epoch = 1
-        else:
-            true_epoch = max(results["epoch"]) + 1
         results["epoch"].append(true_epoch)
 
     # Return the filled results at the end of the epochs
