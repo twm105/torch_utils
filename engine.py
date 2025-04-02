@@ -212,13 +212,16 @@ def train(model: torch.nn.Module,
 
         # Print out what's happening
         if len(results["epoch"]) == 0:
-            true_epoch = 1
+            prev_epoch = 0
         else:
-            true_epoch = max(results["epoch"]) + 1
+            prev_epoch = max(results["epoch"])
+        n_sig_figs = len(str(prev_epoch + epochs)) # calc. how much to zero-pad the printing
+
         if task is not None:
             task_str = f" | task: {task}"
+
         print(
-          f"Epoch: {true_epoch} | "
+          f"Epoch: {prev_epoch+1:0{n_sig_figs}} | "
           f"train_loss: {train_loss:.4f} | "
           f"train_acc: {train_acc:.4f} | "
           f"test_loss: {test_loss:.4f} | "
@@ -236,7 +239,7 @@ def train(model: torch.nn.Module,
         results["lr"].append(epoch_lr)
         results["weight_decay"].append(epoch_weight_decay)
         results["task"].append(task)
-        results["epoch"].append(true_epoch)
+        results["epoch"].append(prev_epoch+1)
 
     # Return the filled results at the end of the epochs
     return results

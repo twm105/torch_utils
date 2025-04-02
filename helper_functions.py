@@ -175,7 +175,7 @@ def plot_loss_curves(results):
     elif plot_count == 4:
         n_rows = 2
 
-    fig, axs = plt.subplots(n_rows, n_cols, figsize=(15, 7), sharex=True)
+    fig, axs = plt.subplots(n_rows, n_cols, figsize=(15, 7), sharex=False)
     axs = axs.flatten()
 
     # Plot loss
