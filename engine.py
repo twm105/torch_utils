@@ -296,19 +296,19 @@ def train(model: torch.nn.Module,
         # Include tensorboard writer updates if required
         if writer:
             # Loss
-            writer.add_scalers(main_tag='Loss',
+            writer.add_scalars(main_tag='Loss',
                                tag_scalar_dict={'Loss/Train': train_loss,
                                                 'Loss/Test': test_loss,},
                                global_step=prev_epoch+1)
 
             # Accuracy
-            writer.add_scalers(main_tag='Accuracy',
+            writer.add_scalars(main_tag='Accuracy',
                                tag_scalar_dict={'Accuracy/Train': train_acc,
                                                 'Accuracy/Test': test_acc,},
                                global_step=prev_epoch+1)
 
             # Scheduling
-            writer.add_scalers(main_tag='Scheduling',
+            writer.add_scalars(main_tag='Scheduling',
                                tag_scalar_dict={'Scheduling/LR': epoch_lr,
                                                 'Scheduling/Weight_Decay': epoch_weight_decay,},
                                global_step=prev_epoch+1)
@@ -369,7 +369,7 @@ def experiment_sweep(experiment_params: dict):
             experiments = []
 
             # iterate through experiments. product function creates cartesian product (a.k.a. full factorial) table of experiment runs
-            for run_params in product(*values):
+            for run_params in tqdm(product(*values), desc="Experiments"):
 
                 # construct experiment, and combine (|) dictionaries with the experiments params overriding the fixed params if duplicated
                 experiment = dict(zip(keys, run_params))
