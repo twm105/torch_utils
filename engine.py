@@ -317,7 +317,7 @@ def train(model: torch.nn.Module,
             writer.flush()
     
     # save model graph
-    if writer:
+    if writer and False: # switched off for now as raises control-flow errors when asserts present in model
         try:
             example_batch = next(iter(train_dataloader))[0].to(device) # dataloader returns list of [X, y] (each is length batch size)
             model.eval()
