@@ -2,9 +2,15 @@
 Contains functions for training and testing a PyTorch model.
 """
 import torch
+from torch.utils.tensorboard import SummaryWriter
 
+from itertools import product
+import functools
+
+import torch.utils.tensorboard
 from tqdm.auto import tqdm
-from typing import Dict, List, Tuple
+from typing import Dict, List, Tuple, Any
+
 
 def train_step(model: torch.nn.Module, 
                dataloader: torch.utils.data.DataLoader, 
@@ -71,6 +77,7 @@ def train_step(model: torch.nn.Module,
     train_acc = train_acc / len(dataloader)
     return train_loss, train_acc
 
+
 def test_step(model: torch.nn.Module, 
               dataloader: torch.utils.data.DataLoader, 
               loss_fn: torch.nn.Module,
@@ -121,13 +128,64 @@ def test_step(model: torch.nn.Module,
     test_acc = test_acc / len(dataloader)
     return test_loss, test_acc
 
+
+def create_writer(experiment_name: str=None, 
+                  model_name: str=None, 
+                  extra: str=None) -> torch.utils.tensorboard.SummaryWriter():
+    """Creates a torch.utils.tensorboard.writer.SummaryWriter() instance saving to a specific log_dir.
+
+    log_dir is a combination of runs/timestamp/experiment_name/model_name/extra.
+
+    Where timestamp is the current date in YYYY-MM-DD format.
+
+    Args:
+        experiment_name (str): Name of experiment.
+        model_name (str): Name of model.
+        extra (str, optional): Anything extra to add to the directory. Defaults to None.
+
+    Returns:
+        torch.utils.tensorboard.writer.SummaryWriter(): Instance of a writer saving to log_dir.
+
+    Example usage:
+        # Create a writer saving to "runs/2022-06-04/data_10_percent/effnetb2/5_epochs/"
+        writer = create_writer(experiment_name="data_10_percent",
+                               model_name="effnetb2",
+                               extra="5_epochs")
+        # The above is the same as:
+        writer = SummaryWriter(log_dir="runs/2022-06-04/data_10_percent/effnetb2/5_epochs/")
+    """
+    from datetime import datetime, timezone
+    import os
+
+    # Get timestamp of current date (all experiments on certain day live in same folder)
+    timestamp = datetime.now(timezone.utc).strftime(r"%y%m%dz%H%M") # returns current date in YYMMDD format
+
+    # initialise the path structure for log_dir
+    log_dir_path = ["runs", timestamp]
+
+    # add optional path structure as required by function input params
+    if experiment_name:
+        log_dir_path.append(experiment_name)
+    if model_name:
+        log_dir_path.append(model_name)
+    if extra:
+        log_dir_path.append(extra)
+
+    # set log_dir based on config above
+    log_dir = os.path.join(*log_dir_path)
+        
+    print(f"[INFO] Created SummaryWriter, saving to: {log_dir}...")
+    return SummaryWriter(log_dir=log_dir)
+
+
 def train(model: torch.nn.Module, 
           train_dataloader: torch.utils.data.DataLoader, 
           test_dataloader: torch.utils.data.DataLoader, 
           optimizer: torch.optim.Optimizer,
           loss_fn: torch.nn.Module,
           epochs: int,
-          device: torch.device,
+          device: torch.device, 
+          writer: torch.utils.tensorboard.writer.SummaryWriter=None,
           scheduler: torch.optim.lr_scheduler=None,
           results: Dict=None,
           task: str=None,) -> Dict[str, List]:
@@ -211,15 +269,9 @@ def train(model: torch.nn.Module,
                                         device=device)
 
         # Print out what's happening
-        if len(results["epoch"]) == 0:
-            prev_epoch = 0
-        else:
-            prev_epoch = max(results["epoch"])
+        prev_epoch = 0 if len(results["epoch"]) == 0 else max(results["epoch"])
         n_sig_figs = len(str(prev_epoch + epochs)) # calc. how much to zero-pad the printing
-
-        if task is not None:
-            task_str = f" | task: {task}"
-
+        task_str = f" | task: {task}" if task is not None else ""
         print(
           f"Epoch: {prev_epoch+1:0{n_sig_figs}} | "
           f"train_loss: {train_loss:.4f} | "
@@ -241,5 +293,83 @@ def train(model: torch.nn.Module,
         results["task"].append(task)
         results["epoch"].append(prev_epoch+1)
 
-    # Return the filled results at the end of the epochs
+        # Include tensorboard writer updates if required
+        if writer is not None:
+            # Loss
+            writer.add_scalers(main_tag='Loss',
+                               tag_scalar_dict={'Loss/Train': train_loss,
+                                                'Loss/Test': test_loss,},
+                               global_step=prev_epoch+1)
+
+            # Accuracy
+            writer.add_scalers(main_tag='Accuracy',
+                               tag_scalar_dict={'Accuracy/Train': train_acc,
+                                                'Accuracy/Test': test_acc,},
+                               global_step=prev_epoch+1)
+
+            # Scheduling
+            writer.add_scalers(main_tag='Scheduling',
+                               tag_scalar_dict={'Scheduling/LR': epoch_lr,
+                                                'Scheduling/Weight_Decay': epoch_weight_decay,},
+                               global_step=prev_epoch+1)
+            
+            # Write values to disk per epoch to avoid loss if loop is interrupted (auto-flushes every 10 writes or 2mins by default)
+            writer.flush()
+
+    # Return the filled results at the end of the epochs and close writer
+    writer.close()
     return results
+
+
+def experiment_sweep(experiment_params: dict):
+    """Creates a decorator to run a function over a sweep of experiment parameter combinations.
+
+    Takes a dictionary of experiment parameters and generates all combinations 
+    using a Cartesian product (i.e. full factorial design). The decorated function 
+    is then executed once per combination, with results stored in each run's output.
+
+    Args:
+        experiment_params (dict): A dictionary where keys are parameter names and 
+        values are lists of values to sweep over.
+
+    Returns:
+        Callable: A decorator that, when applied to a function, runs it across all 
+        parameter combinations and returns a list of dictionaries containing the 
+        parameters and associated results.
+
+    Example usage:
+        @experiment_sweep({
+            "lr": [1e-3, 1e-4],
+            "batch_size": [32, 64]
+        })
+        def run_experiment(lr, batch_size):
+            ...
+
+        results = run_experiment()
+        # results will be a list of dicts with 'lr', 'batch_size', and 'results' keys
+    """
+
+    def experiments_decorator(func):
+        # decorator to pass forward all the function attributes
+        @functools.wraps(func)
+
+        # wrapper function to run experiments
+        def experiment_wrapper(*args, **kwargs) -> List[Dict[str, Any]]:
+            keys, values = zip(*experiment_params.items())
+            experiments = []
+
+            # iterate through experiments. product function creates cartesian product (a.k.a. full factorial) table of experiment runs
+            for run_params in product(*values):
+
+                # construct experiment, and combine (|) dictionaries with the experiments params overriding the fixed params if duplicated
+                experiment = dict(zip(keys, run_params))
+                experiment = kwargs | experiment
+
+                # run experiment function and add results to setup dict
+                experiment["results"] = func(*args, **experiment)
+                experiments.append(experiment)
+
+            # return experiments
+            return experiments
+        return experiment_wrapper
+    return experiments_decorator
