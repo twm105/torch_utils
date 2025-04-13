@@ -370,7 +370,7 @@ def experiment_sweep(experiment_params: dict):
             experiments = []
 
             # iterate through experiments. product function creates cartesian product (a.k.a. full factorial) table of experiment runs
-            for run_params in tqdm(product(*values), desc="Experiments"):
+            for run_params in tqdm(list(product(*values)), desc="Experiments"):
 
                 # construct experiment, and combine (|) dictionaries with the experiments params overriding the fixed params if duplicated
                 experiment = dict(zip(keys, run_params))
