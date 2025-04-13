@@ -294,7 +294,7 @@ def train(model: torch.nn.Module,
         results["epoch"].append(prev_epoch+1)
 
         # Include tensorboard writer updates if required
-        if writer is not None:
+        if writer:
             # Loss
             writer.add_scalers(main_tag='Loss',
                                tag_scalar_dict={'Loss/Train': train_loss,
@@ -315,6 +315,16 @@ def train(model: torch.nn.Module,
             
             # Write values to disk per epoch to avoid loss if loop is interrupted (auto-flushes every 10 writes or 2mins by default)
             writer.flush()
+    
+    # save model graph
+    if writer:
+        try:
+            example_batch = next(iter(train_dataloader)).to(device)
+            model.eval()
+            writer.add_graph(model=model,
+                             input_to_model=example_batch)
+        except Exception as e:
+            print(f"[WARNING] Could not add model graph to TensorBoard: {e}")
 
     # Return the filled results at the end of the epochs and close writer
     writer.close()
