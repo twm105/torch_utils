@@ -297,20 +297,20 @@ def train(model: torch.nn.Module,
         if writer:
             # Loss
             writer.add_scalars(main_tag='Loss',
-                               tag_scalar_dict={'Loss/Train': train_loss,
-                                                'Loss/Test': test_loss,},
+                               tag_scalar_dict={'Train': train_loss,
+                                                'Test': test_loss,},
                                global_step=prev_epoch+1)
 
             # Accuracy
             writer.add_scalars(main_tag='Accuracy',
-                               tag_scalar_dict={'Accuracy/Train': train_acc,
-                                                'Accuracy/Test': test_acc,},
+                               tag_scalar_dict={'Train': train_acc,
+                                                'Test': test_acc,},
                                global_step=prev_epoch+1)
 
             # Scheduling
             writer.add_scalars(main_tag='Scheduling',
-                               tag_scalar_dict={'Scheduling/LR': epoch_lr,
-                                                'Scheduling/Weight_Decay': epoch_weight_decay,},
+                               tag_scalar_dict={'LR': epoch_lr,
+                                                'Weight_Decay': epoch_weight_decay,},
                                global_step=prev_epoch+1)
             
             # Write values to disk per epoch to avoid loss if loop is interrupted (auto-flushes every 10 writes or 2mins by default)
