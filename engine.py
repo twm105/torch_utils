@@ -319,7 +319,7 @@ def train(model: torch.nn.Module,
     # save model graph
     if writer:
         try:
-            example_batch = next(iter(train_dataloader)).to(device)
+            example_batch = next(iter(train_dataloader))[0].to(device) # dataloader returns list of [X, y] (each is length batch size)
             model.eval()
             writer.add_graph(model=model,
                              input_to_model=example_batch)
@@ -327,7 +327,8 @@ def train(model: torch.nn.Module,
             print(f"[WARNING] Could not add model graph to TensorBoard: {e}")
 
     # Return the filled results at the end of the epochs and close writer
-    writer.close()
+    if writer:
+        writer.close()
     return results
 
 
