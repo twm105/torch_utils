@@ -4,12 +4,14 @@ Contains functions for training and testing a PyTorch model.
 import torch
 from torch.utils.tensorboard import SummaryWriter
 
-from itertools import product
-import functools
-
-import torch.utils.tensorboard
-from tqdm.auto import tqdm
 from typing import Dict, List, Tuple, Any
+from datetime import datetime, timezone
+from itertools import product
+from tqdm.auto import tqdm
+import functools
+import os
+
+from utils import save_model
 
 
 def train_step(model: torch.nn.Module, 
@@ -136,7 +138,7 @@ def create_writer(experiment_name: str=None,
 
     log_dir is a combination of runs/timestamp/experiment_name/model_name/extra.
 
-    Where timestamp is the current date in YYYY-MM-DD format.
+    Where timestamp is the current datetime in YYMMDDzHHMM format.
 
     Args:
         experiment_name (str): Name of experiment.
@@ -154,11 +156,9 @@ def create_writer(experiment_name: str=None,
         # The above is the same as:
         writer = SummaryWriter(log_dir="runs/2022-06-04/data_10_percent/effnetb2/5_epochs/")
     """
-    from datetime import datetime, timezone
-    import os
 
     # Get timestamp of current date (all experiments on certain day live in same folder)
-    timestamp = datetime.now(timezone.utc).strftime(r"%y%m%dz%H%M") # returns current date in YYMMDD format
+    timestamp = datetime.now(timezone.utc).strftime(r"%y%m%dz%H%M") # returns current datetime in YYMMDDzHHMM format
 
     # initialise the path structure for log_dir
     log_dir_path = ["runs", timestamp]
@@ -185,8 +185,12 @@ def train(model: torch.nn.Module,
           loss_fn: torch.nn.Module,
           epochs: int,
           device: torch.device, 
-          writer: torch.utils.tensorboard.writer.SummaryWriter=None,
           scheduler: torch.optim.lr_scheduler=None,
+          writer: torch.utils.tensorboard.writer.SummaryWriter=None,
+          checkpoint_interval: int=None,
+          save_final_model: bool=False,
+          model_save_path: str=None,
+          model_save_base_name: str=None,
           results: Dict=None,
           task: str=None,) -> Dict[str, List]:
     """Trains and tests a PyTorch model.
@@ -206,6 +210,11 @@ def train(model: torch.nn.Module,
     epochs: An integer indicating how many epochs to train for.
     device: A target device to compute on (e.g. "cuda" or "cpu").
     scheduler: An optional LR scheduler.
+    writer: A TensorBoard SummaryWriter instance for tracking experiments.
+    checkpoint_interval: Interval in epochs to save models (if not None).
+    save_final_model. Final model weights saved if true.
+    model_save_path. Path for saving model (only saves if not None).
+    model_save_base_name: Stem for model saving (suffixed with epoch number and 'final' for final model)
     results: An optional results dictionary to extend training results.
     task: The training objective or dataset (e.g. "CIFAR10")
 
@@ -223,6 +232,17 @@ def train(model: torch.nn.Module,
               test_loss: [1.2641, 1.5706],
               test_acc: [0.3400, 0.2973]} 
     """
+    # Input checks
+    if checkpoint_interval or save_final_model:
+        # check that save path is defined
+        if model_save_path is None:
+            print("[WARNING] Model checkpoint interval provided with no save_path. Checkpoints will not be saved.")
+        if model_save_base_name is None:
+            # Get timestamp of current date (all experiments on certain day live in same folder)
+            timestamp = datetime.now(timezone.utc).strftime(r"%y%m%dz%H%M") # returns current datetime in YYMMDDzHHMM format
+            model_save_base_name = timestamp + "-model"
+            print(f"[WARNING] No model_save_base_name provided, defaulting to '{model_save_base_name}'")
+    
     # Create empty results dictionary if required
     result_fields = ['epoch', 'train_loss', 'train_acc', 'test_loss', 'test_acc', 'lr', 'weight_decay', 'task', ]
     if results is None:
@@ -251,7 +271,7 @@ def train(model: torch.nn.Module,
     model.to(device)
 
     # Loop through training and testing steps for a number of epochs
-    for epoch in tqdm(range(epochs)):
+    for epoch in tqdm(range(epochs), desc="Training Run"):
         # extract current training config parameters
         epoch_lr = optimizer.param_groups[0]["lr"]
         epoch_weight_decay = optimizer.param_groups[0]["weight_decay"]
@@ -315,6 +335,25 @@ def train(model: torch.nn.Module,
             
             # Write values to disk per epoch to avoid loss if loop is interrupted (auto-flushes every 10 writes or 2mins by default)
             writer.flush()
+
+        # add checkpointing model (optional)
+        if checkpoint_interval:
+            if epoch % checkpoint_interval == 0:
+                # check that save path is defined
+                if model_save_path:
+                    # construct model checkpoint name and save
+                    model_name = model_save_base_name + "_cp" + f"{prev_epoch+1:0{n_sig_figs}}"
+                    save_model(model=model,
+                               target_dir=model_save_path,
+                               model_name=model_name,)
+    
+    # add saving final model (optional)
+    if save_final_model:
+        if model_save_path:
+            model_name = model_save_base_name + "_cp" + f"{prev_epoch+1:0{n_sig_figs}}" + "_final"
+            save_model(model=model,
+                        target_dir=model_save_path,
+                        model_name=model_name,)
     
     # save model graph
     if writer and False: # switched off for now as raises control-flow errors when asserts present in model
@@ -376,7 +415,7 @@ def experiment_sweep(experiment_params: dict):
                 experiment = dict(zip(keys, run_params))
                 experiment = kwargs | experiment
 
-                # run experiment function and add results to setup dict
+                # run experiment function, add results to setup dict, append to output list
                 experiment["results"] = func(*args, **experiment)
                 experiments.append(experiment)
 
