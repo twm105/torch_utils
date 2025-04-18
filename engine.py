@@ -342,7 +342,7 @@ def train(model: torch.nn.Module,
                 # check that save path is defined
                 if model_save_path:
                     # construct model checkpoint name and save
-                    model_name = model_save_base_name + "_cp" + f"{prev_epoch+1:0{n_sig_figs}}"
+                    model_name = model_save_base_name + "_cp" + f"{prev_epoch+1:0{n_sig_figs}}.pth"
                     save_model(model=model,
                                target_dir=model_save_path,
                                model_name=model_name,)
@@ -350,7 +350,7 @@ def train(model: torch.nn.Module,
     # add saving final model (optional)
     if save_final_model:
         if model_save_path:
-            model_name = model_save_base_name + "_cp" + f"{prev_epoch+1:0{n_sig_figs}}" + "_final"
+            model_name = model_save_base_name + "_cp" + f"{prev_epoch+1:0{n_sig_figs}}" + "_final.pth"
             save_model(model=model,
                         target_dir=model_save_path,
                         model_name=model_name,)
