@@ -22,6 +22,7 @@ def train_step(
     optimizer: torch.optim.Optimizer,
     device: torch.device,
     scheduler: torch.optim.lr_scheduler = None,
+    use_bf16: bool = True,
 ) -> Tuple[float, float]:
     """Trains a PyTorch model for a single epoch.
 
@@ -30,21 +31,35 @@ def train_step(
     pass, loss calculation, optimizer step).
 
     Args:
-    model: A PyTorch model to be trained.
-    dataloader: A DataLoader instance for the model to be trained on.
-    loss_fn: A PyTorch loss function to minimize.
-    optimizer: A PyTorch optimizer to help minimize the loss function.
-    device: A target device to compute on (e.g. "cuda" or "cpu").
-    scheduler: An optional PyTorch lr_scheduler.
+        model: A PyTorch model to be trained.
+        dataloader: A DataLoader instance for the model to be trained on.
+        loss_fn: A PyTorch loss function to minimize.
+        optimizer: A PyTorch optimizer to help minimize the loss function.
+        device: A target device to compute on (e.g. "cuda" or "cpu").
+        scheduler: An optional PyTorch lr_scheduler.
+        use_bf16: Boolean that turns on using BF16 if True (default True).
 
     Returns:
-    A tuple of training loss and training accuracy metrics.
-    In the form (train_loss, train_accuracy). For example:
+        A tuple of training loss and training accuracy metrics.
+        In the form (train_loss, train_accuracy). For example:
 
     (0.1112, 0.8743)
     """
     # Put model in train mode
     model.train()
+
+    # configure autocast dtype to utilise bf16 for forward pass if available (A100 or more recent)
+    model_dtype = next(model.parameters()).dtype
+    fallback_dtype = (
+        model_dtype
+        if model_dtype in [torch.float16, torch.bfloat16, torch.float32]
+        else torch.float32
+    )
+    autocast_dtype = (
+        torch.bfloat16
+        if torch.cuda.is_bf16_supported() and use_bf16
+        else fallback_dtype
+    )
 
     # Setup train loss and train accuracy values
     train_loss, train_acc = 0, 0
@@ -54,11 +69,16 @@ def train_step(
         # Send data to target device
         X, y = X.to(device), y.to(device)
 
-        # 1. Forward pass
-        y_pred = model(X)
+        # set to bf16 if GPU supports it (just fwd pass and loss calc, backward inherits from fwd pass)
+        with torch.autocast(
+            device_type=device,
+            dtype=autocast_dtype,
+        ):
+            # 1. Forward pass
+            y_pred = model(X)
 
-        # 2. Calculate  and accumulate loss
-        loss = loss_fn(y_pred, y)
+            # 2. Calculate  and accumulate loss
+            loss = loss_fn(y_pred, y)
         train_loss += loss.item()
 
         # 3. Optimizer zero grad
@@ -88,6 +108,7 @@ def test_step(
     dataloader: torch.utils.data.DataLoader,
     loss_fn: torch.nn.Module,
     device: torch.device,
+    use_bf16: bool = True,
 ) -> Tuple[float, float]:
     """Tests a PyTorch model for a single epoch.
 
@@ -95,19 +116,33 @@ def test_step(
     a forward pass on a testing dataset.
 
     Args:
-    model: A PyTorch model to be tested.
-    dataloader: A DataLoader instance for the model to be tested on.
-    loss_fn: A PyTorch loss function to calculate loss on the test data.
-    device: A target device to compute on (e.g. "cuda" or "cpu").
+        model: A PyTorch model to be tested.
+        dataloader: A DataLoader instance for the model to be tested on.
+        loss_fn: A PyTorch loss function to calculate loss on the test data.
+        device: A target device to compute on (e.g. "cuda" or "cpu").
+        use_bf16: Boolean that turns on using BF16 if True (default True).
 
     Returns:
-    A tuple of testing loss and testing accuracy metrics.
-    In the form (test_loss, test_accuracy). For example:
+        A tuple of testing loss and testing accuracy metrics.
+        In the form (test_loss, test_accuracy). For example:
 
     (0.0223, 0.8985)
     """
     # Put model in eval mode
     model.eval()
+
+    # configure autocast dtype to utilise bf16 for forward pass if available (A100 or more recent)
+    model_dtype = next(model.parameters()).dtype
+    fallback_dtype = (
+        model_dtype
+        if model_dtype in [torch.float16, torch.bfloat16, torch.float32]
+        else torch.float32
+    )
+    autocast_dtype = (
+        torch.bfloat16
+        if torch.cuda.is_bf16_supported() and use_bf16
+        else fallback_dtype
+    )
 
     # Setup test loss and test accuracy values
     test_loss, test_acc = 0, 0
@@ -119,11 +154,16 @@ def test_step(
             # Send data to target device
             X, y = X.to(device), y.to(device)
 
-            # 1. Forward pass
-            test_pred_logits = model(X)
+            # set to bf16 if GPU supports it (just fwd pass and loss calc, backward inherits from fwd pass)
+            with torch.autocast(
+                device_type=device,
+                dtype=autocast_dtype,
+            ):
+                # 1. Forward pass
+                test_pred_logits = model(X)
 
-            # 2. Calculate and accumulate loss
-            loss = loss_fn(test_pred_logits, y)
+                # 2. Calculate and accumulate loss
+                loss = loss_fn(test_pred_logits, y)
             test_loss += loss.item()
 
             # Calculate and accumulate accuracy
@@ -196,6 +236,9 @@ def train(
     scheduler: torch.optim.lr_scheduler = None,
     scaler: torch.cuda.amp.GradScaler = None,
     writer: torch.utils.tensorboard.writer.SummaryWriter = None,
+    torch_compile: bool = True,
+    use_bf16: bool = True,
+    float32_matmul_precision: str = "high",
     checkpoint_interval: int = None,
     save_final_model: bool = False,
     model_save_path: str = None,
@@ -227,6 +270,9 @@ def train(
         scheduler: An optional LR scheduler.
         scaler: An optional GradScaler for mixed precision training.
         writer: A TensorBoard SummaryWriter instance for tracking experiments.
+        float32_matmul_precision: Sets matmul precision (default "High", TF32)
+        torch_compile: Applies torch.compile() to the model if True (default True)
+        use_bf16: Boolean that turns on using BF16 if True (default True).
         checkpoint_interval: If not None, model checkpoints are saved every `checkpoint_interval` epochs.
         save_final_model: If True, final model weights will be saved after all epochs complete.
         model_save_path: Path for saving model checkpoints and final weights.
@@ -315,8 +361,13 @@ def train(
                     f"[WARNING] Results field '{field}' not in inputted results. Adding to results and padding with {fill_msg}."
                 )
 
-    # Make sure model on target device
+    # Set matmul precision (e.g. for TF32 on Ampere+ GPUs)
+    torch.set_float32_matmul_precision(float32_matmul_precision)
+
+    # Make sure model on target device and compile if required
     model.to(device)
+    if torch_compile:
+        model = torch.compile(model)
 
     # Loop through training and testing steps for a number of epochs
     for _ in tqdm(range(epochs), desc="Training Run"):
@@ -332,9 +383,14 @@ def train(
             optimizer=optimizer,
             device=device,
             scheduler=scheduler,
+            use_bf16=use_bf16,
         )
         test_loss, test_acc = test_step(
-            model=model, dataloader=test_dataloader, loss_fn=loss_fn, device=device
+            model=model,
+            dataloader=test_dataloader,
+            loss_fn=loss_fn,
+            device=device,
+            use_bf16=use_bf16,
         )
 
         # Print out what's happening
