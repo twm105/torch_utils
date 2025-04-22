@@ -5,12 +5,12 @@ Contains various utility functions for PyTorch model training and saving.
 import torch
 from pathlib import Path
 import subprocess
-import pyyaml
+# import pyyaml
 
 from typing import Dict
 
 
-# TODO add pyyaml config docs
+# TODO add pyyaml config docs, note it's not installed on colab by default
 
 
 def copy_to_drive_async(local_path: Path, drive_path: Path):
