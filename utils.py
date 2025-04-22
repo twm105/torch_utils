@@ -98,7 +98,7 @@ def save_checkpoint(
 
     # input checks
     checkpoint_file_ext = Path(checkpoint_name).suffix
-    assert checkpoint_file_ext in ["pt", "pth"], (
+    assert checkpoint_file_ext in [".pt", ".pth"], (
         f"[WARNING] Expected checkpoint file extension of .pt or .pth, got: {checkpoint_file_ext}."
     )
 
