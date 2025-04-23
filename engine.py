@@ -465,18 +465,25 @@ def train(
                     model_name = (
                         model_save_base_name + "_cp" + f"{epoch:0{n_sig_figs}}.pth"
                     )
-                    save_checkpoint(
-                        target_dir=model_save_path,
-                        checkpoint_name=model_name,
-                        model=model,
-                        optimizer=optimizer,
-                        epoch=epoch,
-                        colab_local_path=colab_local_path,
-                        scheduler=scheduler,
-                        scaler=scaler,
-                        test_loss=test_loss,
-                        config_file=config_file,
-                    )
+                    try:
+                        save_checkpoint(
+                            target_dir=model_save_path,
+                            checkpoint_name=model_name,
+                            model=model,
+                            optimizer=optimizer,
+                            epoch=epoch,
+                            colab_local_path=colab_local_path,
+                            scheduler=scheduler,
+                            scaler=scaler,
+                            test_loss=test_loss,
+                            config_file=config_file,
+                        )
+                        print(f"[INFO] Saved checkpoint: {model_name}")
+
+                    except Exception as e:
+                        print(
+                            f"[WARNING] Checkpoint for {model_name} failed to save: {e}"
+                        )
 
     # add saving final model (optional)
     if save_final_model:
@@ -484,11 +491,23 @@ def train(
             model_name = (
                 model_save_base_name + "_cp" + f"{epoch:0{n_sig_figs}}" + "_final.pth"
             )
-            save_model(
-                model=model,
-                target_dir=model_save_path,
-                model_name=model_name,
-            )
+            try:
+                save_checkpoint(
+                    target_dir=model_save_path,
+                    checkpoint_name=model_name,
+                    model=model,
+                    optimizer=optimizer,
+                    epoch=epoch,
+                    colab_local_path=colab_local_path,
+                    scheduler=scheduler,
+                    scaler=scaler,
+                    test_loss=test_loss,
+                    config_file=config_file,
+                )
+                print(f"[INFO] Saved final checkpoint: {model_name}")
+
+            except Exception as e:
+                print(f"[WARNING] Checkpoint for {model_name} failed to save: {e}")
 
     # save model graph
     if (
