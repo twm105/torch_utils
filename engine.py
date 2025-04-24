@@ -4,24 +4,28 @@ Contains functions for training and testing a PyTorch model.
 
 import torch
 from torch.utils.tensorboard import SummaryWriter
+from torch.optim.lr_scheduler import _LRScheduler
 
-from typing import Dict, List, Tuple, Any
+from typing import Dict, List, Tuple, Callable, Optional, Any
 from datetime import datetime, timezone
 from itertools import product
 from tqdm.auto import tqdm
 import functools
 import os
 
-from utils import save_model, save_checkpoint
+from utils import save_checkpoint  # , save_model
 
 
 def train_step(
     model: torch.nn.Module,
     dataloader: torch.utils.data.DataLoader,
     loss_fn: torch.nn.Module,
-    optimizer: torch.optim.Optimizer,
     device: torch.device,
-    scheduler: torch.optim.lr_scheduler = None,
+    optimizer: torch.optim.Optimizer,
+    scheduler: Optional[_LRScheduler] = None,
+    batchwise_transform: Optional[
+        Callable[[torch.Tensor, torch.Tensor], Tuple[torch.Tensor, torch.Tensor]]
+    ] = None,
     use_bf16: bool = True,
 ) -> Tuple[float, float]:
     """Trains a PyTorch model for a single epoch.
@@ -34,9 +38,10 @@ def train_step(
         model: A PyTorch model to be trained.
         dataloader: A DataLoader instance for the model to be trained on.
         loss_fn: A PyTorch loss function to minimize.
-        optimizer: A PyTorch optimizer to help minimize the loss function.
         device: A target device to compute on (e.g. "cuda" or "cpu").
+        optimizer: A PyTorch optimizer to help minimize the loss function.
         scheduler: An optional PyTorch lr_scheduler.
+        batchwise_transform: An optional function that applies batchwise transforms such as Cutmix or Mixup.
         use_bf16: Boolean that turns on using BF16 if True (default True).
 
     Returns:
@@ -68,6 +73,9 @@ def train_step(
     for batch, (X, y) in enumerate(dataloader):
         # Send data to target device
         X, y = X.to(device), y.to(device)
+
+        # apply batchwise transform
+        X, y = batchwise_transform(X, y)
 
         # set to bf16 if GPU supports it (just fwd pass and loss calc, backward inherits from fwd pass)
         with torch.autocast(
@@ -235,6 +243,9 @@ def train(
     device: torch.device,
     scheduler: torch.optim.lr_scheduler = None,
     scaler: torch.cuda.amp.GradScaler = None,
+    batchwise_transform: Optional[
+        Callable[[torch.Tensor, torch.Tensor], Tuple[torch.Tensor, torch.Tensor]]
+    ] = None,
     writer: torch.utils.tensorboard.writer.SummaryWriter = None,
     torch_compile: bool = True,
     use_bf16: bool = True,
@@ -269,6 +280,7 @@ def train(
         device: A target device to compute on (e.g. "cuda" or "cpu").
         scheduler: An optional LR scheduler.
         scaler: An optional GradScaler for mixed precision training.
+        batchwise_transform: An optional function that applies batchwise transforms such as Cutmix or Mixup.
         writer: A TensorBoard SummaryWriter instance for tracking experiments.
         float32_matmul_precision: Sets matmul precision (default "High", TF32)
         torch_compile: Applies torch.compile() to the model if True (default True)
@@ -370,162 +382,182 @@ def train(
         model = torch.compile(model)
 
     # Loop through training and testing steps for a number of epochs
-    for _ in tqdm(range(epochs), desc="Training Run"):
-        # extract current training config parameters
-        epoch_lr = optimizer.param_groups[0]["lr"]
-        epoch_weight_decay = optimizer.param_groups[0]["weight_decay"]
+    try:
+        for _ in tqdm(range(epochs), desc="Training Run"):
+            # extract current training config parameters
+            epoch_lr = optimizer.param_groups[0]["lr"]
+            epoch_weight_decay = optimizer.param_groups[0]["weight_decay"]
 
-        # run training and test steps
-        train_loss, train_acc = train_step(
-            model=model,
-            dataloader=train_dataloader,
-            loss_fn=loss_fn,
-            optimizer=optimizer,
-            device=device,
-            scheduler=scheduler,
-            use_bf16=use_bf16,
-        )
-        test_loss, test_acc = test_step(
-            model=model,
-            dataloader=test_dataloader,
-            loss_fn=loss_fn,
-            device=device,
-            use_bf16=use_bf16,
-        )
-
-        # Print out what's happening
-        prev_epoch = 0 if len(results["epoch"]) == 0 else max(results["epoch"])
-        epoch = prev_epoch + 1
-        n_sig_figs = len(
-            str(prev_epoch + epochs)
-        )  # calc. how much to zero-pad the printing
-        task_str = f" | task: {task}" if task is not None else ""
-        print(
-            f"Epoch: {epoch:0{n_sig_figs}} | "
-            f"train_loss: {train_loss:.4f} | "
-            f"train_acc: {train_acc:.4f} | "
-            f"test_loss: {test_loss:.4f} | "
-            f"test_acc: {test_acc:.4f} | "
-            f"lr: {epoch_lr:.2e} | "
-            f"weight_decay: {epoch_weight_decay:.2e}"
-            f"{task_str}"
-        )
-
-        # Update results dictionary
-        results["train_loss"].append(train_loss)
-        results["train_acc"].append(train_acc)
-        results["test_loss"].append(test_loss)
-        results["test_acc"].append(test_acc)
-        results["lr"].append(epoch_lr)
-        results["weight_decay"].append(epoch_weight_decay)
-        results["task"].append(task)
-        results["epoch"].append(epoch)
-
-        # Include tensorboard writer updates if required
-        if writer:
-            # Loss
-            writer.add_scalars(
-                main_tag="Loss",
-                tag_scalar_dict={
-                    "Train": train_loss,
-                    "Test": test_loss,
-                },
-                global_step=epoch,
+            # run training and test steps
+            train_loss, train_acc = train_step(
+                model=model,
+                dataloader=train_dataloader,
+                loss_fn=loss_fn,
+                device=device,
+                optimizer=optimizer,
+                scheduler=scheduler,
+                batchwise_transform=batchwise_transform,
+                use_bf16=use_bf16,
+            )
+            test_loss, test_acc = test_step(
+                model=model,
+                dataloader=test_dataloader,
+                loss_fn=loss_fn,
+                device=device,
+                use_bf16=use_bf16,
             )
 
-            # Accuracy
-            writer.add_scalars(
-                main_tag="Accuracy",
-                tag_scalar_dict={
-                    "Train": train_acc,
-                    "Test": test_acc,
-                },
-                global_step=epoch,
+            # Print out what's happening
+            prev_epoch = 0 if len(results["epoch"]) == 0 else max(results["epoch"])
+            epoch = prev_epoch + 1
+            n_sig_figs = len(
+                str(prev_epoch + epochs)
+            )  # calc. how much to zero-pad the printing
+            task_str = f" | task: {task}" if task is not None else ""
+            print(
+                f"Epoch: {epoch:0{n_sig_figs}} | "
+                f"train_loss: {train_loss:.4f} | "
+                f"train_acc: {train_acc:.4f} | "
+                f"test_loss: {test_loss:.4f} | "
+                f"test_acc: {test_acc:.4f} | "
+                f"lr: {epoch_lr:.2e} | "
+                f"weight_decay: {epoch_weight_decay:.2e}"
+                f"{task_str}"
             )
 
-            # Scheduling
-            writer.add_scalars(
-                main_tag="Scheduling",
-                tag_scalar_dict={
-                    "LR": epoch_lr,
-                    "Weight_Decay": epoch_weight_decay,
-                },
-                global_step=epoch,
-            )
+            # Update results dictionary
+            results["train_loss"].append(train_loss)
+            results["train_acc"].append(train_acc)
+            results["test_loss"].append(test_loss)
+            results["test_acc"].append(test_acc)
+            results["lr"].append(epoch_lr)
+            results["weight_decay"].append(epoch_weight_decay)
+            results["task"].append(task)
+            results["epoch"].append(epoch)
 
-            # Write values to disk per epoch to avoid loss if loop is interrupted (auto-flushes every 10 writes or 2mins by default)
-            writer.flush()
+            # Include tensorboard writer updates if required
+            if writer:
+                # Loss
+                writer.add_scalars(
+                    main_tag="Loss",
+                    tag_scalar_dict={
+                        "Train": train_loss,
+                        "Test": test_loss,
+                    },
+                    global_step=epoch,
+                )
 
-        # add checkpointing model (optional)
-        if checkpoint_interval:
-            if epoch % checkpoint_interval == 0:
-                # check that save path is defined
-                if model_save_path:
-                    # construct model checkpoint name and save
-                    model_name = (
-                        model_save_base_name + "_cp" + f"{epoch:0{n_sig_figs}}.pth"
-                    )
-                    try:
-                        save_checkpoint(
-                            target_dir=model_save_path,
-                            checkpoint_name=model_name,
-                            model=model,
-                            optimizer=optimizer,
-                            epoch=epoch,
-                            colab_local_path=colab_local_path,
-                            scheduler=scheduler,
-                            scaler=scaler,
-                            test_loss=test_loss,
-                            config_file=config_file,
+                # Accuracy
+                writer.add_scalars(
+                    main_tag="Accuracy",
+                    tag_scalar_dict={
+                        "Train": train_acc,
+                        "Test": test_acc,
+                    },
+                    global_step=epoch,
+                )
+
+                # Scheduling
+                writer.add_scalars(
+                    main_tag="Scheduling",
+                    tag_scalar_dict={
+                        "LR": epoch_lr,
+                        "Weight_Decay": epoch_weight_decay,
+                    },
+                    global_step=epoch,
+                )
+
+                # Write values to disk per epoch to avoid loss if loop is interrupted (auto-flushes every 10 writes or 2mins by default)
+                writer.flush()
+
+            # add checkpointing model (optional)
+            if checkpoint_interval:
+                if epoch % checkpoint_interval == 0:
+                    # check that save path is defined
+                    if model_save_path:
+                        # construct model checkpoint name and save
+                        model_name = (
+                            model_save_base_name + "_cp" + f"{epoch:0{n_sig_figs}}.pth"
                         )
-                        print(f"[INFO] Saved checkpoint: {model_name}")
+                        try:
+                            save_checkpoint(
+                                target_dir=model_save_path,
+                                checkpoint_name=model_name,
+                                model=model,
+                                optimizer=optimizer,
+                                epoch=epoch,
+                                colab_local_path=colab_local_path,
+                                scheduler=scheduler,
+                                scaler=scaler,
+                                test_loss=test_loss,
+                                config_file=config_file,
+                            )
+                            print(f"[INFO] Saved checkpoint: {model_name}")
 
-                    except Exception as e:
-                        print(
-                            f"[WARNING] Checkpoint for {model_name} failed to save: {e}"
-                        )
+                        except Exception as e:
+                            print(
+                                f"[WARNING] Checkpoint for {model_name} failed to save: {e}"
+                            )
 
     # add saving final model (optional)
-    if save_final_model:
-        if model_save_path:
-            model_name = (
-                model_save_base_name + "_cp" + f"{epoch:0{n_sig_figs}}" + "_final.pth"
-            )
-            try:
-                save_checkpoint(
-                    target_dir=model_save_path,
-                    checkpoint_name=model_name,
-                    model=model,
-                    optimizer=optimizer,
-                    epoch=epoch,
-                    colab_local_path=colab_local_path,
-                    scheduler=scheduler,
-                    scaler=scaler,
-                    test_loss=test_loss,
-                    config_file=config_file,
+    except KeyboardInterrupt:
+        # inform user that training was interrupted
+        final_save_msg = (
+            ", saving final model," if save_final_model and model_save_path else ""
+        )
+        print(
+            f"\n[INFO] Training interrupted by user. Flushing logs{final_save_msg} and exiting..."
+        )
+
+        # Write values to disk per epoch to avoid loss if loop is interrupted (auto-flushes every 10 writes or 2mins by default)
+        if writer:
+            writer.flush()
+
+    # add saving final model (optional)
+    finally:
+        if save_final_model:
+            if model_save_path:
+                model_name = (
+                    model_save_base_name
+                    + "_cp"
+                    + f"{epoch:0{n_sig_figs}}"
+                    + "_final.pth"
                 )
-                print(f"[INFO] Saved final checkpoint: {model_name}")
+                try:
+                    save_checkpoint(
+                        target_dir=model_save_path,
+                        checkpoint_name=model_name,
+                        model=model,
+                        optimizer=optimizer,
+                        epoch=epoch,
+                        colab_local_path=colab_local_path,
+                        scheduler=scheduler,
+                        scaler=scaler,
+                        test_loss=test_loss,
+                        config_file=config_file,
+                    )
+                    print(f"[INFO] Saved final checkpoint: {model_name}")
 
+                except Exception as e:
+                    print(f"[WARNING] Checkpoint for {model_name} failed to save: {e}")
+
+        # save model graph
+        if (
+            writer and False
+        ):  # switched off for now as raises control-flow errors when asserts present in model
+            try:
+                example_batch = next(iter(train_dataloader))[0].to(
+                    device
+                )  # dataloader returns list of [X, y] (each is length batch size)
+                model.eval()
+                writer.add_graph(model=model, input_to_model=example_batch)
             except Exception as e:
-                print(f"[WARNING] Checkpoint for {model_name} failed to save: {e}")
+                print(f"[WARNING] Could not add model graph to TensorBoard: {e}")
 
-    # save model graph
-    if (
-        writer and False
-    ):  # switched off for now as raises control-flow errors when asserts present in model
-        try:
-            example_batch = next(iter(train_dataloader))[0].to(
-                device
-            )  # dataloader returns list of [X, y] (each is length batch size)
-            model.eval()
-            writer.add_graph(model=model, input_to_model=example_batch)
-        except Exception as e:
-            print(f"[WARNING] Could not add model graph to TensorBoard: {e}")
-
-    # Return the filled results at the end of the epochs and close writer
-    if writer:
-        writer.close()
-    return results
+        # Return the filled results at the end of the epochs and close writer
+        if writer:
+            writer.close()
+        return results
 
 
 def experiment_sweep(experiment_params: dict):
