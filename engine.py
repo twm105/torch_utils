@@ -247,7 +247,7 @@ def train(
     batchwise_transform: Optional[
         Callable[[torch.Tensor, torch.Tensor], Tuple[torch.Tensor, torch.Tensor]]
     ] = None,
-    batchwise_transform_on_off: List[int, int] = None,
+    batchwise_transform_on_off: List[int] = None,
     writer: Optional[torch.utils.tensorboard.SummaryWriter] = None,
     torch_compile: bool = True,
     use_bf16: bool = True,
