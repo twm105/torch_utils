@@ -3,23 +3,27 @@ A series of helper functions used throughout the course.
 
 If a function gets defined once and could be used over and over, it'll go in here.
 """
+
 import torch
+
+# from torch import nn
+import torchvision
+
 import matplotlib.pyplot as plt
 import numpy as np
-
-from torch import nn
 
 import os
 import zipfile
 
 from pathlib import Path
 
+from typing import List
+
 import requests
+
 
 # Walk through an image classification directory and find out how many files (images)
 # are in each subdirectory.
-import os
-
 def walk_through_dir(dir_path):
     """
     Walks through dir_path returning its contents.
@@ -33,7 +37,10 @@ def walk_through_dir(dir_path):
       name of each subdirectory
     """
     for dirpath, dirnames, filenames in os.walk(dir_path):
-        print(f"There are {len(dirnames)} directories and {len(filenames)} images in '{dirpath}'.")
+        print(
+            f"There are {len(dirnames)} directories and {len(filenames)} images in '{dirpath}'."
+        )
+
 
 def plot_decision_boundary(model: torch.nn.Module, X: torch.Tensor, y: torch.Tensor):
     """Plots decision boundaries of model predicting on X in comparison to y.
@@ -76,8 +83,8 @@ def plot_predictions(
     train_data, train_labels, test_data, test_labels, predictions=None
 ):
     """
-  Plots linear training data and test data and compares predictions.
-  """
+    Plots linear training data and test data and compares predictions.
+    """
     plt.figure(figsize=(10, 7))
 
     # Plot training data in blue
@@ -114,7 +121,7 @@ def print_train_time(start, end, device=None):
     """Prints difference between start and end time.
 
     Args:
-        start (float): Start time of computation (preferred in timeit format). 
+        start (float): Start time of computation (preferred in timeit format).
         end (float): End time of computation.
         device ([type], optional): Device that compute is running on. Defaults to None.
 
@@ -137,7 +144,7 @@ def plot_loss_curves(results):
              "test_loss": [...],
              "test_acc": [...]}
     """
-    
+
     # extract values to plot
     loss = results["train_loss"]
     test_loss = results["test_loss"]
@@ -154,12 +161,16 @@ def plot_loss_curves(results):
         if weight_decay_plot:
             weight_decay = results["weight_decay"]
         plot_count += 1
-    
+
     task_plot = "task" in results.keys()
     if task_plot:
         tasks = results["task"]
-        task_map = {task: i for i, task in enumerate(list(set(tasks)))} # generate indices for each unique task in results
-        task_indices = [task_map[task] for task in tasks] # map indices to task-strings in new list
+        task_map = {
+            task: i for i, task in enumerate(list(set(tasks)))
+        }  # generate indices for each unique task in results
+        task_indices = [
+            task_map[task] for task in tasks
+        ]  # map indices to task-strings in new list
         plot_count += 1
 
     if "epochs" in results.keys():
@@ -201,26 +212,25 @@ def plot_loss_curves(results):
         axs[2].set_title("Learning Schedule")
         axs[2].set_xlabel("Epochs")
         axs[2].legend()
-    
+
     # Plot training tasks if required
     if task_plot:
-        i = plot_count - 1 # always the final plot if present
+        i = plot_count - 1  # always the final plot if present
         for task in task_map.keys():
-            task_indices_i = [i  if i == task_map[task] else None for i in task_indices]
+            task_indices_i = [i if i == task_map[task] else None for i in task_indices]
             axs[i].scatter(epochs, task_indices_i, label=task)
         axs[i].set_yticks(ticks=list(task_map.values()), labels=list(task_map.keys()))
         axs[i].set_title("Learning Schedule")
         axs[i].set_xlabel("Epochs")
         axs[i].legend()
-    
+
     # Finalise plot and show
     plt.tight_layout()
     plt.show()
 
+
 # Pred and plot image function from notebook 04
 # See creation: https://www.learnpytorch.io/04_pytorch_custom_datasets/#113-putting-custom-image-prediction-together-building-a-function
-from typing import List
-import torchvision
 
 
 def pred_and_plot_image(
@@ -238,7 +248,7 @@ def pred_and_plot_image(
         class_names (List[str], optional): different class names for target image. Defaults to None.
         transform (_type_, optional): transform of target image. Defaults to None.
         device (torch.device, optional): target device to compute on. Defaults to "cuda" if torch.cuda.is_available() else "cpu".
-    
+
     Returns:
         Matplotlib plot of target image and model prediction as title.
 
@@ -289,7 +299,8 @@ def pred_and_plot_image(
     plt.title(title)
     plt.axis(False)
 
-def set_seeds(seed: int=42):
+
+def set_seeds(seed: int = 42):
     """Sets random sets for torch operations.
 
     Args:
@@ -300,19 +311,18 @@ def set_seeds(seed: int=42):
     # Set the seed for CUDA torch operations (ones that happen on the GPU)
     torch.cuda.manual_seed(seed)
 
-def download_data(source: str, 
-                  destination: str,
-                  remove_source: bool = True) -> Path:
+
+def download_data(source: str, destination: str, remove_source: bool = True) -> Path:
     """Downloads a zipped dataset from source and unzips to destination.
 
     Args:
         source (str): A link to a zipped file containing data.
         destination (str): A target directory to unzip data to.
         remove_source (bool): Whether to remove the source after downloading and extracting.
-    
+
     Returns:
         pathlib.Path to downloaded data.
-    
+
     Example usage:
         download_data(source="https://github.com/mrdbourke/pytorch-deep-learning/raw/main/data/pizza_steak_sushi.zip",
                       destination="pizza_steak_sushi")
@@ -321,13 +331,13 @@ def download_data(source: str,
     data_path = Path("data/")
     image_path = data_path / destination
 
-    # If the image folder doesn't exist, download it and prepare it... 
+    # If the image folder doesn't exist, download it and prepare it...
     if image_path.is_dir():
         print(f"[INFO] {image_path} directory exists, skipping download.")
     else:
         print(f"[INFO] Did not find {image_path} directory, creating one...")
         image_path.mkdir(parents=True, exist_ok=True)
-        
+
         # Download pizza, steak, sushi data
         target_file = Path(source).name
         with open(data_path / target_file, "wb") as f:
@@ -337,11 +347,11 @@ def download_data(source: str,
 
         # Unzip pizza, steak, sushi data
         with zipfile.ZipFile(data_path / target_file, "r") as zip_ref:
-            print(f"[INFO] Unzipping {target_file} data...") 
+            print(f"[INFO] Unzipping {target_file} data...")
             zip_ref.extractall(image_path)
 
         # Remove .zip file
         if remove_source:
             os.remove(data_path / target_file)
-    
+
     return image_path

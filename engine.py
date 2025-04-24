@@ -186,7 +186,7 @@ def test_step(
 
 def create_writer(
     experiment_name: str = None, model_name: str = None, extra: str = None
-) -> torch.utils.tensorboard.SummaryWriter():
+) -> torch.utils.tensorboard.SummaryWriter:
     """Creates a torch.utils.tensorboard.writer.SummaryWriter() instance saving to a specific log_dir.
 
     log_dir is a combination of runs/timestamp/experiment_name/model_name/extra.
@@ -241,23 +241,23 @@ def train(
     loss_fn: torch.nn.Module,
     epochs: int,
     device: torch.device,
-    scheduler: torch.optim.lr_scheduler = None,
-    scaler: torch.cuda.amp.GradScaler = None,
+    scheduler: Optional[_LRScheduler] = None,
+    scaler: Optional[torch.cuda.amp.GradScaler] = None,
     batchwise_transform: Optional[
         Callable[[torch.Tensor, torch.Tensor], Tuple[torch.Tensor, torch.Tensor]]
     ] = None,
-    writer: torch.utils.tensorboard.writer.SummaryWriter = None,
+    writer: Optional[torch.utils.tensorboard.SummaryWriter] = None,
     torch_compile: bool = True,
     use_bf16: bool = True,
     float32_matmul_precision: str = "high",
-    checkpoint_interval: int = None,
+    checkpoint_interval: Optional[int] = None,
     save_final_model: bool = False,
-    model_save_path: str = None,
-    model_save_base_name: str = None,
-    colab_local_path: str = None,
-    config_file: str = None,
-    results: Dict = None,
-    task: str = None,
+    model_save_path: Optional[str] = None,
+    model_save_base_name: Optional[str] = None,
+    colab_local_path: Optional[str] = None,
+    config_file: Optional[str] = None,
+    results: Optional[Dict] = None,
+    task: Optional[str] = None,
 ) -> Dict[str, List]:
     """Trains and tests a PyTorch model.
 
