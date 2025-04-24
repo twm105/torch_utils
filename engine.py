@@ -41,7 +41,7 @@ def train_step(
         device: A target device to compute on (e.g. "cuda" or "cpu").
         optimizer: A PyTorch optimizer to help minimize the loss function.
         scheduler: An optional PyTorch lr_scheduler.
-        batchwise_transform: An optional function that applies batchwise transforms such as Cutmix or Mixup.
+        batchwise_transform: An optional function that applies batchwise transforms, e.g. Mixup. Takes [X, y] as inputs.
         use_bf16: Boolean that turns on using BF16 if True (default True).
 
     Returns:
@@ -75,7 +75,8 @@ def train_step(
         X, y = X.to(device), y.to(device)
 
         # apply batchwise transform
-        X, y = batchwise_transform(X, y)
+        if batchwise_transform:
+            X, y = batchwise_transform(X, y)
 
         # set to bf16 if GPU supports it (just fwd pass and loss calc, backward inherits from fwd pass)
         with torch.autocast(
@@ -246,6 +247,7 @@ def train(
     batchwise_transform: Optional[
         Callable[[torch.Tensor, torch.Tensor], Tuple[torch.Tensor, torch.Tensor]]
     ] = None,
+    batchwise_transform_on_off: List[int, int] = None,
     writer: Optional[torch.utils.tensorboard.SummaryWriter] = None,
     torch_compile: bool = True,
     use_bf16: bool = True,
@@ -280,7 +282,8 @@ def train(
         device: A target device to compute on (e.g. "cuda" or "cpu").
         scheduler: An optional LR scheduler.
         scaler: An optional GradScaler for mixed precision training.
-        batchwise_transform: An optional function that applies batchwise transforms such as Cutmix or Mixup.
+        batchwise_transform: An optional function that applies batchwise transforms, e.g. Mixup. Takes [X, y] as inputs.
+        batchwise_transform_on_off: an optional input to set start/finish epochs for batchwise_tranforms, input format [start, finish].
         writer: A TensorBoard SummaryWriter instance for tracking experiments.
         float32_matmul_precision: Sets matmul precision (default "High", TF32)
         torch_compile: Applies torch.compile() to the model if True (default True)
@@ -384,9 +387,27 @@ def train(
     # Loop through training and testing steps for a number of epochs
     try:
         for _ in tqdm(range(epochs), desc="Training Run"):
+            # calculate epoch based on results dict rather than this loop
+            prev_epoch = 0 if len(results["epoch"]) == 0 else max(results["epoch"])
+            epoch = prev_epoch + 1
+
             # extract current training config parameters
             epoch_lr = optimizer.param_groups[0]["lr"]
             epoch_weight_decay = optimizer.param_groups[0]["weight_decay"]
+
+            # determine if batchwise transforms are to be applied
+            batchwise_transform_actual = None
+
+            if batchwise_transform:
+                # if start/stop epochs defined, test if in bounds, if not just apply batchwise_transform
+                if batchwise_transform_on_off:
+                    if (
+                        batchwise_transform_on_off[0] <= epoch
+                        and batchwise_transform_on_off[1] >= epoch
+                    ):
+                        batchwise_transform_actual = batchwise_transform
+                else:
+                    batchwise_transform_actual = batchwise_transform
 
             # run training and test steps
             train_loss, train_acc = train_step(
@@ -396,7 +417,7 @@ def train(
                 device=device,
                 optimizer=optimizer,
                 scheduler=scheduler,
-                batchwise_transform=batchwise_transform,
+                batchwise_transform=batchwise_transform_actual,
                 use_bf16=use_bf16,
             )
             test_loss, test_acc = test_step(
@@ -408,8 +429,6 @@ def train(
             )
 
             # Print out what's happening
-            prev_epoch = 0 if len(results["epoch"]) == 0 else max(results["epoch"])
-            epoch = prev_epoch + 1
             n_sig_figs = len(
                 str(prev_epoch + epochs)
             )  # calc. how much to zero-pad the printing
