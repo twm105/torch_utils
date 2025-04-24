@@ -101,7 +101,16 @@ def train_step(
 
         # Calculate and accumulate accuracy metric across all batches
         y_pred_class = torch.argmax(torch.softmax(y_pred, dim=1), dim=1)
-        train_acc += (y_pred_class == y).sum().item() / len(y_pred)
+
+        # standard labels
+        if y.ndim == 1:
+            y_true = y
+        # one-hot or soft labels
+        else:
+            y_true = torch.argmax(y, dim=1)
+
+        # update accuracy
+        train_acc += (y_pred_class == y_true).sum().item() / len(y_pred)
 
     # LR scheduler step
     scheduler.step()
