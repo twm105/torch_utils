@@ -391,7 +391,9 @@ def train(
     # Make sure model on target device and compile if required
     model.to(device)
     if torch_compile:
+        print("[INFO] Compiling model...")
         model = torch.compile(model)
+        print("[INFO] Model compiled.")
 
     # Loop through training and testing steps for a number of epochs
     try:
@@ -499,7 +501,7 @@ def train(
                 writer.flush()
 
             # add checkpointing model (optional)
-            if checkpoint_interval:
+            if checkpoint_interval and (epoch != epochs):
                 if epoch % checkpoint_interval == 0:
                     # check that save path is defined
                     if model_save_path:

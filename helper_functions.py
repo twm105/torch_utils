@@ -146,10 +146,10 @@ def plot_loss_curves(results):
     """
 
     # extract values to plot
-    loss = results["train_loss"]
+    train_loss = results["train_loss"]
     test_loss = results["test_loss"]
 
-    accuracy = results["train_acc"]
+    train_accuracy = results["train_acc"]
     test_accuracy = results["test_acc"]
 
     plot_count = 2
@@ -190,24 +190,32 @@ def plot_loss_curves(results):
     axs = axs.flatten()
 
     # Plot loss
-    axs[0].plot(epochs, loss, label="train_loss")
-    axs[0].plot(epochs, test_loss, label="test_loss")
+    axs[0].plot(epochs, train_loss, label=f"Train Loss ({train_loss[-1]:.4f})")
+    axs[0].plot(epochs, test_loss, label=f"Test Loss ({test_loss[-1]:.4f})")
     axs[0].set_title("Loss")
     axs[0].set_xlabel("Epochs")
     axs[0].legend()
 
     # Plot accuracy
-    axs[1].plot(epochs, accuracy, label="train_accuracy")
-    axs[1].plot(epochs, test_accuracy, label="test_accuracy")
+    axs[1].plot(
+        epochs, train_accuracy, label=f"Train Accuracy ({train_accuracy[-1]:.4f})"
+    )
+    axs[1].plot(
+        epochs, test_accuracy, label=f"Test Accuracy ({train_accuracy[-1]:.4f})"
+    )
     axs[1].set_title("Accuracy")
     axs[1].set_xlabel("Epochs")
     axs[1].legend()
 
     # Plot training config if required
     if lr_plot:
-        axs[2].plot(epochs, lr, label="lr")  # always the 3rd plot if present
+        axs[2].plot(
+            epochs, lr, label=f"Learning Rate ({lr[-1]:.3e})"
+        )  # always the 3rd plot if present
         if weight_decay_plot:
-            axs[2].plot(epochs, weight_decay, label="weight_decay")
+            axs[2].plot(
+                epochs, weight_decay, label=f"Weight Decay ({weight_decay[-1]:.3e})"
+            )
         axs[2].set_yscale("log")
         axs[2].set_title("Learning Schedule")
         axs[2].set_xlabel("Epochs")
