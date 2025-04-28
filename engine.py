@@ -262,6 +262,7 @@ def train(
     use_bf16: bool = True,
     float32_matmul_precision: str = "high",
     checkpoint_interval: Optional[int] = None,
+    stop_training: Optional[Callable[[Dict], bool]] = None,
     save_final_model: bool = False,
     model_save_path: Optional[str] = None,
     model_save_base_name: Optional[str] = None,
@@ -298,6 +299,7 @@ def train(
         torch_compile: Applies torch.compile() to the model if True (default True)
         use_bf16: Boolean that turns on using BF16 if True (default True).
         checkpoint_interval: If not None, model checkpoints are saved every `checkpoint_interval` epochs.
+        stop_training: Optional function passed that returns True to break training loop early based on latest results dictionary, else False.
         save_final_model: If True, final model weights will be saved after all epochs complete.
         model_save_path: Path for saving model checkpoints and final weights.
         model_save_base_name: Stem for naming saved models (e.g. base_name_cp01.pth).
@@ -529,6 +531,19 @@ def train(
                                 f"[WARNING] Checkpoint for {model_name} failed to save: {e}"
                             )
 
+            # check for early stopping condition (optional, if passed to engine.train)
+            if stop_training:
+                try:
+                    if stop_training(results):
+                        print(
+                            f"[INFO] Early stopping triggered at epoch {epoch} of {epochs}."
+                        )
+                        break
+                except Exception as e:
+                    print(
+                        f"[WARNING] Calling stop_training(results) raised the following exception: {e}"
+                    )
+
     # add saving final model (optional)
     except KeyboardInterrupt:
         # inform user that training was interrupted
@@ -588,6 +603,69 @@ def train(
         if writer:
             writer.close()
         return results
+
+
+def early_stopping_ratio(
+    results: Dict,
+    window_epochs: Optional[int] = 10,
+    ratio_threshold: Optional[float] = 0.05,
+    results_ratio_field: Optional[str] = "test_loss",
+    results_ratio_test: Optional[str] = "less_than",
+) -> bool:
+    """Determines early stopping based on ratio of final to initial metric window.
+
+    Calculates the ratio of the sum of a specified metric (e.g., test loss, test accuracy)
+    over the most recent epochs compared to the initial epochs. If the ratio meets a specified
+    condition ('less_than' or 'greater_than' a threshold), early stopping is triggered.
+
+    Args:
+        results (Dict): Dictionary of training results containing metric histories.
+        window_epochs (int, optional): Number of epochs to average over at start and end. Default is 10.
+        ratio_threshold (float, optional): Threshold to compare final/start ratio against. Default is 0.05.
+        results_ratio_field (str, optional): Name of the metric field to track within results. Default is 'test_loss'.
+        results_ratio_test (str, optional): Type of test to apply: 'less_than' (e.g., for loss) or 'greater_than' (e.g., for accuracy).
+
+    Returns:
+        bool: True if the stop condition is met, False otherwise.
+
+    Example usage:
+        stop_training_fn = lambda results: early_stopping_ratio(results, window_epochs=5, ratio_threshold=0.1, results_ratio_field='test_loss', results_ratio_test='less_than')
+    """
+
+    # check results correctly formatted (is dict, ratio-test field in keys)
+    if type(results) is not Dict:
+        if results_ratio_field in results.keys():
+            if len(results[results_ratio_field]) < 2:
+                print(
+                    f"[WARNING] early_stopping_ratio expects results Dict as input, received type: {type(results)}. No early stopping will be applied."
+                )
+        return False
+
+    if results_ratio_field not in results.keys():
+        print(
+            f"[WARNING] early_stopping_ratio requires field '{results_ratio_field}' in results. No early stopping will be applied."
+        )
+
+    # if fewer epochs completed than the specified window, continue training (implies that the first test is when the initial window == final window)
+    if len(results[results_ratio_field]) < window_epochs:
+        return False
+
+    # extract relevant data from results and return (len of window cancels out in division so not required)
+    initial_window = results[results_ratio_field][:window_epochs]
+    final_window = results[results_ratio_field][-window_epochs:]
+    ratio = sum(final_window) / sum(initial_window)
+
+    # return test result of ratio vs threshold based on specified test (e.g. < for loss, > for accuracy)
+    if results_ratio_test == "less_than":
+        return ratio < ratio_threshold
+    elif results_ratio_test == "greater_than":
+        return ratio > ratio_threshold
+    else:
+        print(
+            f"[WARNING] Invalid input for results_ratio_test: '{results_ratio_test}'. Expected input to be one of 'less_than' or 'greater_than'. "
+            "Early stopping will not be applied."
+        )
+        return False
 
 
 def experiment_sweep(experiment_params: dict):
