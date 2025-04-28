@@ -633,7 +633,7 @@ def early_stopping_ratio(
     """
 
     # check results correctly formatted (is dict, ratio-test field in keys)
-    if type(results) is not Dict:
+    if not isinstance(results, dict):
         if results_ratio_field in results.keys():
             if len(results[results_ratio_field]) < 2:
                 print(
