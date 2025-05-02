@@ -174,9 +174,11 @@ def show_batch_images(
     axs = axs.flatten()
 
     # iterate through subplots, plotting images, adding labels at titles
+    X, y = batch
     for i in range(n_images):
         # extract and unnormalise if needed
-        image, label = batch[i]
+        image = X[i]
+        label = y[i]
         if unnormalise:
             image = unnormalise_image(
                 img=image, mean=unnormalise["mean"], std=unnormalise["std"]
