@@ -468,6 +468,7 @@ def train(
             results["epoch"].append(epoch)
 
             # Include tensorboard writer updates if required
+            # TODO abstract this into a function that takes a dict of dicts for tag_scalar_dicts
             if writer:
                 # Loss
                 writer.add_scalars(
@@ -523,6 +524,7 @@ def train(
                                 scaler=scaler,
                                 test_loss=test_loss,
                                 config_file=config_file,
+                                results=results,
                             )
                             print(f"[INFO] Saved checkpoint: {model_name}")
 
@@ -580,6 +582,7 @@ def train(
                         scaler=scaler,
                         test_loss=test_loss,
                         config_file=config_file,
+                        results=results,
                     )
                     print(f"[INFO] Saved final checkpoint: {model_name}")
 

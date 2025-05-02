@@ -17,7 +17,7 @@ import zipfile
 
 from pathlib import Path
 
-from typing import List
+from typing import List, Tuple, Dict, Optional
 
 import requests
 
@@ -133,6 +133,65 @@ def print_train_time(start, end, device=None):
     return total_time
 
 
+def unnormalise_image(img: torch.Tensor, mean: List, std: List):
+    """Reverses the normalisation applied to a tensor image.
+
+    Args:
+        img (torch.Tensor): The normalised image tensor of shape (C, H, W).
+        mean (List): The mean values used for normalisation, one per channel.
+        std (List): The standard deviation values used for normalisation, one per channel.
+
+    Returns:
+        torch.Tensor: The unnormalised image tensor.
+    """
+    mean = torch.tensor(mean).reshape(-1, 1, 1)
+    std = torch.tensor(std).reshape(-1, 1, 1)
+    return img * std + mean
+
+
+# show images and labels from dataloader batch
+def show_batch_images(
+    batch: Tuple[torch.Tensor, torch.Tensor],
+    n_images: int = 8,
+    images_per_row: int = 8,
+    unnormalise: Optional[Dict] = None,
+) -> None:
+    """Displays a batch of images and their corresponding labels in a grid layout.
+
+    Args:
+        batch (Tuple[torch.Tensor, torch.Tensor]): A batch of images and labels from a DataLoader.
+        n_images (int, optional): Number of images to display. Defaults to 8.
+        images_per_row (int, optional): Number of images per row in the display grid. Defaults to 8.
+        unnormalise (Optional[Dict], optional): Dictionary containing 'mean' and 'std' used for unnormalising images. Defaults to None.
+
+    Returns:
+        None
+    """
+
+    # initiate figure setup
+    n_rows = n_images // images_per_row
+    fig, axs = plt.subplots(n_rows, images_per_row, figsize=(15, 7), sharex=False)
+    axs = axs.flatten()
+
+    # iterate through subplots, plotting images, adding labels at titles
+    for i in range(n_images):
+        # extract and unnormalise if needed
+        image, label = batch[i]
+        if unnormalise:
+            image = unnormalise_image(
+                img=image, mean=unnormalise["mean"], std=unnormalise["std"]
+            )
+
+        # construct image
+        axs[i].imshow(image.permute(1, 2, 0).clip(0, 1))
+        axs[i].set_title(f"class: {label}")
+        axs[i].axis("off")
+
+    # tight layout and show
+    plt.tight_layout()
+    plt.show()
+
+
 # Plot loss curves of a model
 def plot_loss_curves(results):
     """Plots training curves of a results dictionary.
@@ -200,9 +259,7 @@ def plot_loss_curves(results):
     axs[1].plot(
         epochs, train_accuracy, label=f"Train Accuracy ({train_accuracy[-1]:.4f})"
     )
-    axs[1].plot(
-        epochs, test_accuracy, label=f"Test Accuracy ({train_accuracy[-1]:.4f})"
-    )
+    axs[1].plot(epochs, test_accuracy, label=f"Test Accuracy ({test_accuracy[-1]:.4f})")
     axs[1].set_title("Accuracy")
     axs[1].set_xlabel("Epochs")
     axs[1].legend()

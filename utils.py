@@ -72,6 +72,7 @@ def save_checkpoint(
     scaler: torch.cuda.amp.GradScaler = None,
     test_loss: float = None,
     config_file: str = None,
+    results: Dict = None,
 ) -> Dict:
     """
     Saves a complete training checkpoint including model weights, optimiser state,
@@ -88,6 +89,7 @@ def save_checkpoint(
         scaler (torch.cuda.amp.GradScaler, optional): AMP gradient scaler state (if using mixed precision).
         test_loss (float, optional): Latest test loss value.
         config_file (str, optional): Path to the training configuration file (YAML/JSON).
+        results: results dictionary containing training traces up to the checkpoint.
 
     Returns:
         str: Path to the saved checkpoint file.
@@ -116,6 +118,7 @@ def save_checkpoint(
         "scaler": scaler.state_dict() if scaler else None,
         "loss": test_loss if test_loss else None,
         "config_file": config_file if config_file else None,
+        "results": results if results else None,
     }
 
     # save checkpoint
