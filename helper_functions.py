@@ -170,7 +170,9 @@ def show_batch_images(
 
     # initiate figure setup
     n_rows = n_images // images_per_row
-    fig, axs = plt.subplots(n_rows, images_per_row, figsize=(15, 7), sharex=False)
+    fig, axs = plt.subplots(
+        n_rows, images_per_row, figsize=(15, 5 * n_rows), sharex=False
+    )
     axs = axs.flatten()
 
     # iterate through subplots, plotting images, adding labels at titles
