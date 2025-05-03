@@ -178,9 +178,22 @@ def show_batch_images(
     # iterate through subplots, plotting images, adding labels at titles
     X, y = batch
     for i in range(n_images):
-        # extract and unnormalise if needed
+        # extract image and label from loader
         image = X[i]
         label = y[i]
+
+        # if cutmix/mixup being used, logits are given for labels, so we need to adapt the title
+        if label.ndim == 0:
+            title = f"class: {label}"
+        elif label.ndim == 1:
+            title = ""
+            for j, prob in enumerate(label):
+                if prob > 0:
+                    if len(title) > 0:
+                        title += "\n"
+                    title += f"{j}: {prob:.3f}"
+
+        # unnormalise if needed
         if unnormalise:
             image = unnormalise_image(
                 img=image, mean=unnormalise["mean"], std=unnormalise["std"]
@@ -188,7 +201,7 @@ def show_batch_images(
 
         # construct image
         axs[i].imshow(image.permute(1, 2, 0).clip(0, 1))
-        axs[i].set_title(f"class: {label}")
+        axs[i].set_title(title.strip())
         axs[i].axis("off")
 
     # tight layout and show
