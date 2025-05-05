@@ -310,7 +310,7 @@ def plot_loss_curves(results, title=None):
     # Finalise plot and show
     plt.tight_layout()
     if title:
-        plt.suptitle(title, fontsize=1, y=1.02)
+        plt.suptitle(title, fontsize=16, y=1.02)
         plt.subplots_adjust(top=0.88)
     plt.show()
 
