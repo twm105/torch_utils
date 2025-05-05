@@ -210,7 +210,7 @@ def show_batch_images(
 
 
 # Plot loss curves of a model
-def plot_loss_curves(results):
+def plot_loss_curves(results, title=None):
     """Plots training curves of a results dictionary.
 
     Args:
@@ -262,6 +262,7 @@ def plot_loss_curves(results):
     elif plot_count == 4:
         n_rows = 2
 
+    # configure plot figure
     fig, axs = plt.subplots(n_rows, n_cols, figsize=(15, 7), sharex=False)
     axs = axs.flatten()
 
@@ -308,6 +309,9 @@ def plot_loss_curves(results):
 
     # Finalise plot and show
     plt.tight_layout()
+    if title:
+        plt.suptitle(title, fontsize=1, y=1.02)
+        plt.subplots_adjust(top=0.88)
     plt.show()
 
 

@@ -335,6 +335,8 @@ def train(
                 epoch: [1, 2]
             }
     """
+    # TODO add EMA to the loop (incl. train_step and test_step). Decay should be 1 - 1/N where N=steps (so derive from dataloader size)
+
     # Input checks
     if checkpoint_interval or save_final_model:
         # check that save path is defined
